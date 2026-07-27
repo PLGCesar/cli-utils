@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+# Command 1: mark [name]
 mark() {
     if [ -z "$1" ]; then
         echo "Usage: mark <name> [optional_path]"
@@ -8,6 +9,7 @@ mark() {
     markwarp mark "$@"
 }
 
+# Command 2: warp [name]
 warp() {
     if [ -z "$1" ]; then
         markwarp list
@@ -25,6 +27,7 @@ warp() {
     fi
 }
 
+# Tab completion for warp command
 _warp_autocomplete() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
     if [ -f "$HOME/.marks" ]; then
