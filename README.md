@@ -15,6 +15,6 @@ Any of our utilities REQUIRE:
 - ### Description: "A utility that lets you instantly switch folders from anywhere, using Mark and Warp. You can go from one folder to another with a single command, stress-free!"
 - ### Language: C(using gcc) + sh/bash
 
-- ### Name: "..."
-- ### Description: "More utilities coming soon."
-- 
+- ### Name: "Note"
+- ### Description: "A CLI utility for notes, it has priority, a reminder when opening bash/zsh, good for remembering things"
+- ### Language: C(using gcc)
