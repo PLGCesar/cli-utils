@@ -18,3 +18,7 @@ Any of our utilities REQUIRE:
 - ### Name: "Note"
 - ### Description: "A CLI utility for notes, it has priority, a reminder when opening bash/zsh, good for remembering things"
 - ### Language: C(using gcc)
+
+- ### Name: "Genpass"
+- ### Description: "A universal password generator that includes special characters, uppercase and lowercase letters, and numbers (up to 16 characters)."
+- ### Language: C (using gcc)
