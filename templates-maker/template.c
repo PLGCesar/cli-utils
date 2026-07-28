@@ -1,8 +1,13 @@
 /*
- * template.c v2.0 - Directory Structure Scaffolder & Template Engine
+ * template.c v2.1 - Directory Structure Scaffolder & Template Engine
  * Features: Make, Load, Show (Tree Preview), Remove, Export to Downloads, Import.
+ * Fix: Added #include <windows.h> for Win32 Console API types (HANDLE, DWORD).
  * Supports: Linux, macOS, Windows, Android (Termux).
  */
+
+#define _POSIX_C_SOURCE 200809L
+#define _DEFAULT_SOURCE
+#define _GNU_SOURCE
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,6 +17,7 @@
 
 #if defined(_WIN32) || defined(_WIN64)
     #define OS_WINDOWS 1
+    #include <windows.h>
     #include <direct.h>
     #include <io.h>
     #define mkdir_native(path) _mkdir(path)
@@ -93,7 +99,6 @@ static void get_downloads_dir(char *out_path, size_t size) {
 
     snprintf(out_path, size, "%s/Downloads", home);
     struct stat st;
-    // Fallback to HOME if Downloads directory doesn't exist
     if (stat(out_path, &st) != 0 || !S_ISDIR(st.st_mode)) {
         snprintf(out_path, size, "%s", home);
     }
@@ -128,11 +133,9 @@ static int scan_dirs_recursive(const char *base_path, const char *rel_path, FILE
 
     struct dirent *entry;
     while ((entry = readdir(dir)) != NULL) {
-        // Skip . and ..
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
             continue;
 
-        // Skip hidden directories (like .git, .vscode, .templates)
         if (entry->d_name[0] == '.')
             continue;
 
@@ -148,7 +151,6 @@ static int scan_dirs_recursive(const char *base_path, const char *rel_path, FILE
 
         struct stat st;
         if (stat(full_path, &st) == 0) {
-            // IGNORE FILES! Only record directories
             if (S_ISDIR(st.st_mode)) {
                 fprintf(out_fp, "%s\n", new_rel_path);
                 (*count)++;
@@ -252,18 +254,15 @@ static void cmd_show_template(const char *tmpl_name) {
         line[strcspn(line, "\r\n")] = '\0';
         if (strlen(line) == 0) continue;
 
-        // Calculate depth level by counting slashes
         int depth = 0;
         for (size_t i = 0; i < strlen(line); i++) {
             if (line[i] == '/' || line[i] == '\\') depth++;
         }
 
-        // Extract last directory name in path
         char *last_slash = strrchr(line, '/');
         if (!last_slash) last_slash = strrchr(line, '\\');
         const char *folder_name = last_slash ? last_slash + 1 : line;
 
-        // Print tree branch indentation
         printf("  ");
         for (int i = 0; i < depth; i++) {
             printf("│  ");
@@ -303,7 +302,6 @@ static void cmd_export_template(const char *tmpl_name) {
     char tmpl_file[1024];
     snprintf(tmpl_file, sizeof(tmpl_file), "%s/%s.tmpl", templates_dir, tmpl_name);
 
-    // Check if template exists
     struct stat st;
     if (stat(tmpl_file, &st) != 0) {
         printf("%s[-] Template '%s' not found!%s\n", C_RED, tmpl_name, C_RESET);
@@ -333,7 +331,6 @@ static void cmd_import_template(const char *file_path) {
         return;
     }
 
-    // Extract filename from path
     const char *last_slash = strrchr(file_path, '/');
     if (!last_slash) last_slash = strrchr(file_path, '\\');
     const char *filename = last_slash ? last_slash + 1 : file_path;
@@ -353,7 +350,7 @@ static void cmd_import_template(const char *file_path) {
 }
 
 /* --- COMMAND: -list --- */
-static void cmd_list_templates(void) {
+static void cmd_list(void) {
     char templates_dir[1024];
     get_templates_dir(templates_dir, sizeof(templates_dir));
 
@@ -384,7 +381,7 @@ static void cmd_list_templates(void) {
 
 /* --- Help Menu --- */
 static void print_help(const char *prog_name) {
-    printf("%sTemplate Directory Scaffolder CLI v2.0%s\n", C_BOLD, C_RESET);
+    printf("%sTemplate Directory Scaffolder CLI v2.1%s\n", C_BOLD, C_RESET);
     printf("Usage: %s <command> [args]\n\n", prog_name);
     printf("Commands:\n");
     printf("  -make, make <name>          Map current directory hierarchy -> ~/.templates/<name>.tmpl\n");
@@ -434,7 +431,7 @@ int main(int argc, char *argv[]) {
         cmd_import_template(argv[2]);
     }
     else if (strcmp(cmd, "-list") == 0 || strcmp(cmd, "list") == 0) {
-        cmd_list_templates();
+        cmd_list();
     }
     else {
         print_help(argv[0]);
