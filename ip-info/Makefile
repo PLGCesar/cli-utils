@@ -1,6 +1,6 @@
 # Compiler & Flags
 CC      ?= gcc
-CFLAGS ?= -Wall -Wextra -O2 -std=c99 -Wno-format-truncation
+CFLAGS  ?= -Wall -Wextra -O2 -std=c99 -Wno-format-truncation
 TARGET  = ip-info
 ALIAS   = ipinfo
 SRC     = ip-info.c
@@ -8,11 +8,9 @@ SRC     = ip-info.c
 # OS Detection
 ifeq ($(OS),Windows_NT)
     LIBS = -lws2_32 -liphlpapi
-    RM = del /Q /F
     EXE = .exe
 else
     LIBS =
-    RM = rm -f
     EXE =
 endif
 
@@ -37,8 +35,8 @@ all: $(BIN)
 $(BIN): $(SRC)
 	$(CC) $(CFLAGS) $(SRC) -o $(BIN) $(LIBS)
 
-# Clean build artifacts
+# Clean build artifacts (Cross-platform)
 clean:
-	$(RM) $(BIN)
+	-rm -f $(BIN) *.exe *.o
 
 .PHONY: all clean

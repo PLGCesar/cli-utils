@@ -1,16 +1,14 @@
 # Compiler & Flags
 CC      ?= gcc
-CFLAGS ?= -Wall -Wextra -O2 -std=c99 -Wno-format-truncation
+CFLAGS  ?= -Wall -Wextra -O2 -std=c99 -Wno-format-truncation
 TARGET  = template
 ALIAS   = template
 SRC     = template.c
 
 # OS Detection
 ifeq ($(OS),Windows_NT)
-    RM = del /Q /F
     EXE = .exe
 else
-    RM = rm -f
     EXE =
 endif
 
@@ -35,8 +33,8 @@ all: $(BIN)
 $(BIN): $(SRC)
 	$(CC) $(CFLAGS) $(SRC) -o $(BIN)
 
-# Clean build artifacts
+# Clean build artifacts (Cross-platform)
 clean:
-	$(RM) $(BIN)
+	-rm -f $(BIN) *.exe *.o
 
 .PHONY: all clean
