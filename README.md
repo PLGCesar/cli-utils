@@ -5,6 +5,7 @@
 [![Language](https://img.shields.io/badge/Language-C99-blue.svg)](https://en.wikipedia.org/wiki/C99)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Platforms](https://img.shields.io/badge/Platforms-Linux%20%7C%20macOS%20%7C%20Windows%20%7C%20Android-orange.svg)](#supported-platforms)
+[![Build Status](https://github.com/PLGCesar/cli-utils/actions/workflows/build.yml/badge.svg)](https://github.com/PLGCesar/cli-utils/actions)
 
 ---
 
