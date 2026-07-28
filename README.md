@@ -1,32 +1,75 @@
-# CLI Utils
+# ⚡ CLI Utils
 
-A collection of lightweight command-line tools and scripts built for speed, efficiency, and use in terminal environments like Termux and Linux.
-Any of our utilities REQUIRE:
-- gcc/clang
-- Make
+> A high-performance collection of lightweight command-line utilities built in **C** for Linux, macOS, Windows, and Android (Termux).
 
-## Projects
+[![Language](https://img.shields.io/badge/Language-C99-blue.svg)](https://en.wikipedia.org/wiki/C99)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Platforms](https://img.shields.io/badge/Platforms-Linux%20%7C%20macOS%20%7C%20Windows%20%7C%20Android-orange.svg)](#supported-platforms)
 
-- ### Name: Calculator
-- ### Description: "A universal calculator for CLI, Windows, Mac, Linux, Android, etc., designed to be fast and also quickly compiled with a Makefile."
-- ### Language: C(using gcc)
+---
 
-- ### Name: Warp/Mark
-- ### Description: "A utility that lets you instantly switch folders from anywhere, using Mark and Warp. You can go from one folder to another with a single command, stress-free!"
-- ### Language: C(using gcc) + sh/bash
+## 📋 Requirements
 
-- ### Name: "Note"
-- ### Description: "A CLI utility for notes, it has priority, a reminder when opening bash/zsh, good for remembering things"
-- ### Language: C(using gcc)
+Before using or compiling any utility, ensure you have:
+- **Compiler:** `gcc` or `clang` (C99 standard)
+- **Build Tool:** `make`
 
-- ### Name: "Genpass"
-- ### Description: "A universal password generator that includes special characters, uppercase and lowercase letters, and numbers (up to 16 characters)."
-- ### Language: C (using gcc)
+---
 
-- ### Name: IP-Info
-- ### Description: "A cross-platform network inspector that detects WAN/LAN IPs, geolocation, ISP, DNS resolvers, proxies, and includes an interactive Expert Mode with latency testing."
-- ### Language: C (using gcc/clang)
+## 🚀 Projects Overview
 
-- ### Name: Template
-- ### Description: "A directory structure scaffolder that maps folder hierarchies, saves them as templates, and unpacks them anywhere. Features ASCII tree previews, export to Downloads, and import capabilities."
-- ### Language: C (using gcc/clang)
+| Utility | Description | Tech Stack |
+| :--- | :--- | :--- |
+| 🌐 **`ip-info`** | Network inspector (WAN/LAN, Geolocation, DNS, Proxy, Latency) | `C99` |
+| 📂 **`template`** | Folder structure scaffolder with ASCII tree preview & export/import | `C99` |
+| 🧮 **`calculator`** | Fast cross-platform CLI calculator | `C99` |
+| 🚀 **`warp/mark`** | Directory bookmarking and instant navigation tool | `C99` + `Bash/Sh` |
+| 📝 **`note`** | CLI note manager with priority levels and shell startup reminders | `C99` |
+| 🔐 **`genpass`** | Secure password & key generator with custom character sets | `C99` |
+
+---
+
+## 🛠️ Utilities Showcase
+
+### 🌐 IP-Info
+- **Description:** A cross-platform network inspector that detects WAN/LAN IPs, geolocation, ISP, DNS resolvers, and environment proxies. Includes an interactive **Expert Mode** with Cloudflare TCP latency testing.
+- **Language:** C (gcc/clang)
+
+### 📂 Template
+- **Description:** A directory structure scaffolder that maps folder hierarchies, saves them as reusable templates, and unpacks them anywhere. Features ASCII tree previews, export to Downloads, and import capabilities.
+- **Language:** C (gcc/clang)
+
+### 🧮 Calculator
+- **Description:** A universal calculator for CLI environments across Windows, Mac, Linux, and Android. Designed for lightning-fast compilation and instant execution.
+- **Language:** C (gcc)
+
+### 🚀 Warp / Mark
+- **Description:** A directory bookmarking utility that lets you instantly jump between folders from anywhere using `mark` and `warp`. Stress-free folder navigation.
+- **Language:** C (gcc) + Bash/Sh
+
+### 📝 Note
+- **Description:** A smart CLI note manager with priority levels and automatic reminders displayed when opening a new Bash/Zsh shell session.
+- **Language:** C (gcc)
+
+### 🔐 Genpass
+- **Description:** A universal password generator that generates secure strings including special characters, uppercase/lowercase letters, and numbers (up to 16 characters).
+- **Language:** C (gcc)
+
+---
+
+## 📦 Installation & Quickstart
+
+To build and install any utility with its shell alias automatically configured:
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/PLGCesar/cli-utils.git
+
+# 2. Enter the utility directory
+cd cli-utils/<utility-folder>
+
+# 3. Compile and set up alias in 1 command
+make
+
+# 4. Reload your shell configuration
+source ~/.bashrc  # or source ~/.zshrc
