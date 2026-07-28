@@ -4,6 +4,11 @@
  * Zero external heavy dependencies!
  */
 
+// Enable POSIX and GNU extensions under strict -std=c99 mode on Linux
+#define _POSIX_C_SOURCE 200809L
+#define _DEFAULT_SOURCE
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,6 +19,8 @@
     #define OS_ANDROID 1
     #define OS_UNIX 1
     #include <unistd.h>
+    #include <sys/types.h>
+    #include <sys/time.h>
     #include <sys/socket.h>
     #include <netdb.h>
     #include <arpa/inet.h>
@@ -31,6 +38,8 @@
 #else
     #define OS_UNIX 1
     #include <unistd.h>
+    #include <sys/types.h>
+    #include <sys/time.h>
     #include <sys/socket.h>
     #include <netdb.h>
     #include <arpa/inet.h>
@@ -45,7 +54,6 @@ static int use_colors = 0;
 static void init_tty_check(void) {
 #ifdef OS_WINDOWS
     use_colors = _isatty(_fileno(stdout));
-    // Enable ANSI Virtual Terminal Sequences on Windows 10+
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
     if (hOut != INVALID_HANDLE_VALUE) {
         DWORD dwMode = 0;
@@ -75,7 +83,6 @@ typedef struct {
     int success;
 } PublicGeoInfo;
 
-// Init socket engine
 static void net_init(void) {
 #ifdef OS_WINDOWS
     WSADATA wsa;
@@ -100,7 +107,6 @@ static void close_socket(int fd) {
 #endif
 }
 
-// Socket timeout helper (3 seconds max)
 static void set_socket_timeout(int sock, int seconds) {
 #ifdef OS_WINDOWS
     DWORD timeout = seconds * 1000;
@@ -115,7 +121,6 @@ static void set_socket_timeout(int sock, int seconds) {
 #endif
 }
 
-// Zero-dependency JSON string value extractor
 static void extract_json_val(const char *json, const char *key, char *out, size_t max_len) {
     out[0] = '\0';
     char search_key[128];
@@ -138,14 +143,12 @@ static void extract_json_val(const char *json, const char *key, char *out, size_
     }
 }
 
-/* --- Public IP & Geolocation with Fallback --- */
 static PublicGeoInfo get_public_ip_geo(void) {
     PublicGeoInfo info = {0};
     strcpy(info.country, "Unknown");
     strcpy(info.city, "Unknown");
     strcpy(info.isp, "Unknown");
 
-    // Endpoint 1: ip-api.com
     struct addrinfo hints, *res;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
@@ -184,7 +187,7 @@ static PublicGeoInfo get_public_ip_geo(void) {
         freeaddrinfo(res);
     }
 
-    // Fallback 2: api.ipify.org
+    // Fallback: api.ipify.org
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
@@ -224,7 +227,6 @@ static PublicGeoInfo get_public_ip_geo(void) {
     return info;
 }
 
-/* --- Latency RTT Check --- */
 static double measure_latency_ms(void) {
     struct addrinfo hints, *res;
     memset(&hints, 0, sizeof(hints));
@@ -261,7 +263,6 @@ static double measure_latency_ms(void) {
     return (conn_res == 0) ? ms : -1.0;
 }
 
-/* --- Printers for Human Mode --- */
 static void print_os_info(void) {
     printf("%s[+] Target OS:%s\n", C_CYAN, C_RESET);
 #if defined(OS_ANDROID)
@@ -313,7 +314,6 @@ static void print_private_ips(void) {
                 inet_ntop(AF_INET6, &(sa6->sin6_addr), host, sizeof(host));
             }
 
-            // Filter link-local IPv6 or display cleanly
             printf("  ├─ %-10s [%s] : %s%s%s\n",
                    ifa->ifa_name,
                    (family == AF_INET) ? "IPv4" : "IPv6",
@@ -454,7 +454,6 @@ static void print_expert_mode(void) {
     }
 }
 
-/* --- JSON Printer (--json) --- */
 static void print_json_output(PublicGeoInfo *geo) {
     printf("{\n");
 #if defined(OS_ANDROID)
@@ -481,7 +480,6 @@ static void print_json_output(PublicGeoInfo *geo) {
     printf("}\n");
 }
 
-/* --- Help Menu (-h, --help) --- */
 static void print_help(const char *prog_name) {
     printf("%sip-info CLI Tool v2.0%s\n", C_BOLD, C_RESET);
     printf("Usage: %s [options]\n\n", prog_name);
@@ -492,7 +490,6 @@ static void print_help(const char *prog_name) {
     printf("  -h, --help        Show this help message\n\n");
 }
 
-/* --- Main Entry Point --- */
 int main(int argc, char *argv[]) {
     init_tty_check();
     net_init();
@@ -501,7 +498,6 @@ int main(int argc, char *argv[]) {
     int opt_json = 0;
     int opt_quiet = 0;
 
-    // Parse Flags
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-e") == 0 || strcmp(argv[i], "--expert") == 0) opt_expert = 1;
         else if (strcmp(argv[i], "-j") == 0 || strcmp(argv[i], "--json") == 0) opt_json = 1;
@@ -515,21 +511,18 @@ int main(int argc, char *argv[]) {
 
     PublicGeoInfo geo = get_public_ip_geo();
 
-    // Mode 1: Quiet Mode (-q)
     if (opt_quiet) {
         printf("%s\n", geo.ip);
         net_cleanup();
         return 0;
     }
 
-    // Mode 2: JSON Mode (-j)
     if (opt_json) {
         print_json_output(&geo);
         net_cleanup();
         return 0;
     }
 
-    // Mode 3: Normal / Human Output
     printf("=========================================\n");
     printf("      %sIP-INFO CLI TOOL v2.0%s           \n", C_BOLD, C_RESET);
     printf("=========================================\n");
@@ -540,7 +533,6 @@ int main(int argc, char *argv[]) {
     print_dns_info();
     print_proxy_info();
 
-    // Expert Mode
     if (opt_expert) {
         print_expert_mode();
     } else {
