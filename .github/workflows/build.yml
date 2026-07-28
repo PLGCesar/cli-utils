@@ -18,6 +18,10 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Prepare Environment
+        run: |
+          touch ~/.bashrc
+
       - name: Install Build Essentials (Linux)
         if: runner.os == 'Linux'
         run: |

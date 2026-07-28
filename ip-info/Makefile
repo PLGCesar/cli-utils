@@ -22,12 +22,13 @@ BIN = $(TARGET)$(EXE)
 all: $(BIN)
 	@SHELL_RC="$${HOME}/.bashrc"; \
 	if [ -f "$${HOME}/.zshrc" ]; then SHELL_RC="$${HOME}/.zshrc"; fi; \
+	touch "$$SHELL_RC" 2>/dev/null || true; \
 	EXEC_PATH="$$(pwd)/$(BIN)"; \
 	ALIAS_CMD="alias $(ALIAS)='$$EXEC_PATH'"; \
 	if grep -q "alias $(ALIAS)=" "$$SHELL_RC" 2>/dev/null; then \
 		echo "[+] Successfully built! (Alias '$(ALIAS)' is already active in $$SHELL_RC)"; \
 	else \
-		echo "$$ALIAS_CMD" >> "$$SHELL_RC"; \
+		echo "$$ALIAS_CMD" >> "$$SHELL_RC" 2>/dev/null || true; \
 		echo "[+] Successfully built AND hooked alias '$(ALIAS)' to $$SHELL_RC!"; \
 		echo "[!] Run 'source $$SHELL_RC' or restart your terminal to use '$(ALIAS)'."; \
 	fi
