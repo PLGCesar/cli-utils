@@ -1,0 +1,52 @@
+name: Build Verification
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build:
+    name: Build & Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Build Essentials (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential gcc make
+
+      - name: Auto-Compile All Utilities
+        run: |
+          echo "Scanning subdirectories for Makefiles..."
+          found=0
+          for dir in */; do
+            if [ -f "${dir}Makefile" ]; then
+              echo "--------------------------------------------------"
+              echo "Building utility in folder: ${dir}"
+              echo "--------------------------------------------------"
+              (cd "$dir" && make clean && make)
+              found=1
+            fi
+          done
+
+          if [ -f "Makefile" ]; then
+            echo "--------------------------------------------------"
+            echo "Building root Makefile..."
+            echo "--------------------------------------------------"
+            make clean && make
+            found=1
+          fi
+
+          if [ $found -eq 0 ]; then
+            echo "[-] No Makefiles found in repository!"
+            exit 1
+          fi
