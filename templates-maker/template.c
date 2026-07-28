@@ -1,6 +1,6 @@
 /*
- * template.c - Directory Structure Scaffolder & Template Engine
- * Captures current directory hierarchy and reproduces it anywhere!
+ * template.c v2.0 - Directory Structure Scaffolder & Template Engine
+ * Features: Make, Load, Show (Tree Preview), Remove, Export to Downloads, Import.
  * Supports: Linux, macOS, Windows, Android (Termux).
  */
 
@@ -80,6 +80,47 @@ static void get_templates_dir(char *out_path, size_t size) {
     create_dir_p(out_path);
 }
 
+/* --- Get User Downloads Directory --- */
+static void get_downloads_dir(char *out_path, size_t size) {
+    const char *home = NULL;
+#ifdef OS_WINDOWS
+    home = getenv("USERPROFILE");
+    if (!home) home = getenv("HOMEDRIVE");
+#else
+    home = getenv("HOME");
+#endif
+    if (!home) home = ".";
+
+    snprintf(out_path, size, "%s/Downloads", home);
+    struct stat st;
+    // Fallback to HOME if Downloads directory doesn't exist
+    if (stat(out_path, &st) != 0 || !S_ISDIR(st.st_mode)) {
+        snprintf(out_path, size, "%s", home);
+    }
+}
+
+/* --- Binary File Copy Helper --- */
+static int copy_file(const char *src_path, const char *dst_path) {
+    FILE *src = fopen(src_path, "rb");
+    if (!src) return 0;
+
+    FILE *dst = fopen(dst_path, "wb");
+    if (!dst) {
+        fclose(src);
+        return 0;
+    }
+
+    char buffer[4096];
+    size_t bytes;
+    while ((bytes = fread(buffer, 1, sizeof(buffer), src)) > 0) {
+        fwrite(buffer, 1, bytes, dst);
+    }
+
+    fclose(src);
+    fclose(dst);
+    return 1;
+}
+
 /* --- Recursive Directory Scanner (Ignores Files) --- */
 static int scan_dirs_recursive(const char *base_path, const char *rel_path, FILE *out_fp, int *count) {
     DIR *dir = opendir(base_path);
@@ -107,11 +148,10 @@ static int scan_dirs_recursive(const char *base_path, const char *rel_path, FILE
 
         struct stat st;
         if (stat(full_path, &st) == 0) {
-            // IGNORE FILES! Check if it's a directory
+            // IGNORE FILES! Only record directories
             if (S_ISDIR(st.st_mode)) {
                 fprintf(out_fp, "%s\n", new_rel_path);
                 (*count)++;
-                // Recurse down subdirectories
                 scan_dirs_recursive(full_path, new_rel_path, out_fp, count);
             }
         }
@@ -120,7 +160,7 @@ static int scan_dirs_recursive(const char *base_path, const char *rel_path, FILE
     return 1;
 }
 
-/* --- COMMAND: -make [name] --- */
+/* --- COMMAND: -make <name> --- */
 static void cmd_make_template(const char *tmpl_name) {
     char templates_dir[1024];
     get_templates_dir(templates_dir, sizeof(templates_dir));
@@ -134,18 +174,18 @@ static void cmd_make_template(const char *tmpl_name) {
         return;
     }
 
-    printf("%s[+] Scanning current directory hierarchy...%s\n", C_CYAN, C_RESET);
+    printf("%s[+] Sniffing current directory hierarchy...%s\n", C_CYAN, C_RESET);
     int count = 0;
     scan_dirs_recursive(".", "", fp, &count);
     fclose(fp);
 
-    printf("%s[✔] Successfully saved template '%s%s%s' with %d directory structures!%s\n",
+    printf("%s[✔] Successfully saved template '%s%s%s' (%d folders mapped)!%s\n",
            C_GREEN, C_BOLD, tmpl_name, C_GREEN, count, C_RESET);
-    printf("    Saved in: %s\n", tmpl_file);
+    printf("    Saved location: %s\n", tmpl_file);
 }
 
-/* --- COMMAND: -load [name] --- */
-static void cmd_load_template(const char *tmpl_name) {
+/* --- COMMAND: -load <name> [target_dir] --- */
+static void cmd_load_template(const char *tmpl_name, const char *target_dir) {
     char templates_dir[1024];
     get_templates_dir(templates_dir, sizeof(templates_dir));
 
@@ -155,27 +195,161 @@ static void cmd_load_template(const char *tmpl_name) {
     FILE *fp = fopen(tmpl_file, "r");
     if (!fp) {
         printf("%s[-] Template '%s' not found in ~/.templates/%s\n", C_RED, tmpl_name, C_RESET);
-        printf("    Run 'template -list' to see all available templates.\n");
+        printf("    Run 'template -list' to see saved templates.\n");
         return;
     }
 
-    printf("%s[+] Unpacking template '%s%s%s' in current directory...%s\n",
+    if (target_dir && strlen(target_dir) > 0) {
+        create_dir_p(target_dir);
+        printf("%s[+] Creating root project folder: %s/%s\n", C_CYAN, target_dir, C_RESET);
+    }
+
+    printf("%s[+] Unpacking template '%s%s%s'...%s\n",
            C_CYAN, C_BOLD, tmpl_name, C_CYAN, C_RESET);
 
     char line[1024];
     int count = 0;
     while (fgets(line, sizeof(line), fp)) {
-        // Strip trailing newline
         line[strcspn(line, "\r\n")] = '\0';
         if (strlen(line) > 0) {
-            create_dir_p(line);
-            printf("  ├─ %sCreated:%s %s/\n", C_GREEN, C_RESET, line);
+            char final_path[2048];
+            if (target_dir && strlen(target_dir) > 0) {
+                snprintf(final_path, sizeof(final_path), "%s/%s", target_dir, line);
+            } else {
+                snprintf(final_path, sizeof(final_path), "%s", line);
+            }
+
+            create_dir_p(final_path);
+            printf("  ├─ %sCreated:%s %s/\n", C_GREEN, C_RESET, final_path);
             count++;
         }
     }
     fclose(fp);
 
-    printf("%s[✔] Done! Created %d folders successfully.%s\n", C_GREEN, count, C_RESET);
+    printf("%s[✔] Done! Unpacked %d folders successfully.%s\n", C_GREEN, count, C_RESET);
+}
+
+/* --- COMMAND: -show <name> (ASCII Tree Preview) --- */
+static void cmd_show_template(const char *tmpl_name) {
+    char templates_dir[1024];
+    get_templates_dir(templates_dir, sizeof(templates_dir));
+
+    char tmpl_file[1024];
+    snprintf(tmpl_file, sizeof(tmpl_file), "%s/%s.tmpl", templates_dir, tmpl_name);
+
+    FILE *fp = fopen(tmpl_file, "r");
+    if (!fp) {
+        printf("%s[-] Template '%s' not found!%s\n", C_RED, tmpl_name, C_RESET);
+        return;
+    }
+
+    printf("\n%s[+] Tree structure preview for template '%s%s%s':%s\n",
+           C_CYAN, C_BOLD, tmpl_name, C_CYAN, C_RESET);
+
+    char line[1024];
+    int count = 0;
+    while (fgets(line, sizeof(line), fp)) {
+        line[strcspn(line, "\r\n")] = '\0';
+        if (strlen(line) == 0) continue;
+
+        // Calculate depth level by counting slashes
+        int depth = 0;
+        for (size_t i = 0; i < strlen(line); i++) {
+            if (line[i] == '/' || line[i] == '\\') depth++;
+        }
+
+        // Extract last directory name in path
+        char *last_slash = strrchr(line, '/');
+        if (!last_slash) last_slash = strrchr(line, '\\');
+        const char *folder_name = last_slash ? last_slash + 1 : line;
+
+        // Print tree branch indentation
+        printf("  ");
+        for (int i = 0; i < depth; i++) {
+            printf("│  ");
+        }
+        printf("├─ %s%s/%s\n", C_BOLD, folder_name, C_RESET);
+        count++;
+    }
+    fclose(fp);
+
+    if (count == 0) {
+        printf("  └─ [!] Template is empty.\n");
+    } else {
+        printf("\n  └─ %sTotal: %d folders%s\n", C_YELLOW, count, C_RESET);
+    }
+}
+
+/* --- COMMAND: -rm <name> (Delete Template) --- */
+static void cmd_remove_template(const char *tmpl_name) {
+    char templates_dir[1024];
+    get_templates_dir(templates_dir, sizeof(templates_dir));
+
+    char tmpl_file[1024];
+    snprintf(tmpl_file, sizeof(tmpl_file), "%s/%s.tmpl", templates_dir, tmpl_name);
+
+    if (remove(tmpl_file) == 0) {
+        printf("%s[✔] Nuked template '%s%s%s' from storage!%s\n", C_GREEN, C_BOLD, tmpl_name, C_GREEN, C_RESET);
+    } else {
+        printf("%s[-] Could not delete '%s'. Template does not exist.%s\n", C_RED, tmpl_name, C_RESET);
+    }
+}
+
+/* --- COMMAND: -export <name> (Yeet to Downloads) --- */
+static void cmd_export_template(const char *tmpl_name) {
+    char templates_dir[1024];
+    get_templates_dir(templates_dir, sizeof(templates_dir));
+
+    char tmpl_file[1024];
+    snprintf(tmpl_file, sizeof(tmpl_file), "%s/%s.tmpl", templates_dir, tmpl_name);
+
+    // Check if template exists
+    struct stat st;
+    if (stat(tmpl_file, &st) != 0) {
+        printf("%s[-] Template '%s' not found!%s\n", C_RED, tmpl_name, C_RESET);
+        return;
+    }
+
+    char downloads_dir[1024];
+    get_downloads_dir(downloads_dir, sizeof(downloads_dir));
+
+    char dest_file[1024];
+    snprintf(dest_file, sizeof(dest_file), "%s/%s.tmpl", downloads_dir, tmpl_name);
+
+    if (copy_file(tmpl_file, dest_file)) {
+        printf("%s[✔] Successfully exported template '%s%s%s' to Downloads folder!%s\n",
+               C_GREEN, C_BOLD, tmpl_name, C_GREEN, C_RESET);
+        printf("    File location: %s\n", dest_file);
+    } else {
+        printf("%s[-] Failed to copy file to Downloads folder.%s\n", C_RED, C_RESET);
+    }
+}
+
+/* --- COMMAND: -import <file_path> --- */
+static void cmd_import_template(const char *file_path) {
+    struct stat st;
+    if (stat(file_path, &st) != 0) {
+        printf("%s[-] File not found: %s%s\n", C_RED, file_path, C_RESET);
+        return;
+    }
+
+    // Extract filename from path
+    const char *last_slash = strrchr(file_path, '/');
+    if (!last_slash) last_slash = strrchr(file_path, '\\');
+    const char *filename = last_slash ? last_slash + 1 : file_path;
+
+    char templates_dir[1024];
+    get_templates_dir(templates_dir, sizeof(templates_dir));
+
+    char dest_file[1024];
+    snprintf(dest_file, sizeof(dest_file), "%s/%s", templates_dir, filename);
+
+    if (copy_file(file_path, dest_file)) {
+        printf("%s[✔] Successfully imported template '%s%s%s' into ~/.templates/!%s\n",
+               C_GREEN, C_BOLD, filename, C_GREEN, C_RESET);
+    } else {
+        printf("%s[-] Failed to import template file.%s\n", C_RED, C_RESET);
+    }
 }
 
 /* --- COMMAND: -list --- */
@@ -196,7 +370,7 @@ static void cmd_list_templates(void) {
     while ((entry = readdir(dir)) != NULL) {
         char *ext = strrchr(entry->d_name, '.');
         if (ext && strcmp(ext, ".tmpl") == 0) {
-            *ext = '\0'; // Trim extension
+            *ext = '\0';
             printf("  ├─ %s%s%s\n", C_BOLD, entry->d_name, C_RESET);
             count++;
         }
@@ -204,19 +378,23 @@ static void cmd_list_templates(void) {
     closedir(dir);
 
     if (count == 0) {
-        printf("  └─ %s[x] No templates saved yet. Create one with 'template -make <name>'!%s\n", C_YELLOW, C_RESET);
+        printf("  └─ %s[x] No templates saved yet.%s\n", C_YELLOW, C_RESET);
     }
 }
 
-/* --- Help Screen --- */
+/* --- Help Menu --- */
 static void print_help(const char *prog_name) {
-    printf("%sTemplate Directory Scaffolder CLI v1.0%s\n", C_BOLD, C_RESET);
-    printf("Usage: %s <command> [template_name]\n\n", prog_name);
+    printf("%sTemplate Directory Scaffolder CLI v2.0%s\n", C_BOLD, C_RESET);
+    printf("Usage: %s <command> [args]\n\n", prog_name);
     printf("Commands:\n");
-    printf("  -make, make <name>   Map current directory structure and save to ~/.templates/<name>.tmpl\n");
-    printf("  -load, load <name>   Create directory hierarchy from template in current path\n");
-    printf("  -list, list          List all saved templates in ~/.templates/\n");
-    printf("  -help, help          Show this help menu\n\n");
+    printf("  -make, make <name>          Map current directory hierarchy -> ~/.templates/<name>.tmpl\n");
+    printf("  -load, load <name> [folder] Create directory structure (optionally in a target folder)\n");
+    printf("  -show, show <name>          Display visual ASCII tree preview of template\n");
+    printf("  -rm, rm, delete <name>      Delete saved template from ~/.templates/\n");
+    printf("  -export, export <name>      Copy template file directly to Downloads folder\n");
+    printf("  -import, import <file>      Import a .tmpl file into ~/.templates/\n");
+    printf("  -list, list                 List all saved templates\n");
+    printf("  -help, help                 Show this help menu\n\n");
 }
 
 /* --- Main Entry Point --- */
@@ -230,30 +408,36 @@ int main(int argc, char *argv[]) {
 
     const char *cmd = argv[1];
 
-    if (strcmp(cmd, "-make") == 0 || strcmp(cmd, "--make") == 0 || strcmp(cmd, "make") == 0) {
-        if (argc < 3) {
-            printf("%s[-] Missing template name. Usage: template -make <name>%s\n", C_RED, C_RESET);
-            return 1;
-        }
+    if (strcmp(cmd, "-make") == 0 || strcmp(cmd, "make") == 0) {
+        if (argc < 3) { printf("%s[-] Missing name. Usage: template -make <name>%s\n", C_RED, C_RESET); return 1; }
         cmd_make_template(argv[2]);
     }
-    else if (strcmp(cmd, "-load") == 0 || strcmp(cmd, "--load") == 0 || strcmp(cmd, "load") == 0) {
-        if (argc < 3) {
-            printf("%s[-] Missing template name. Usage: template -load <name>%s\n", C_RED, C_RESET);
-            return 1;
-        }
-        cmd_load_template(argv[2]);
+    else if (strcmp(cmd, "-load") == 0 || strcmp(cmd, "load") == 0) {
+        if (argc < 3) { printf("%s[-] Missing name. Usage: template -load <name> [target_folder]%s\n", C_RED, C_RESET); return 1; }
+        const char *target = (argc >= 4) ? argv[3] : NULL;
+        cmd_load_template(argv[2], target);
     }
-    else if (strcmp(cmd, "-list") == 0 || strcmp(cmd, "--list") == 0 || strcmp(cmd, "list") == 0) {
+    else if (strcmp(cmd, "-show") == 0 || strcmp(cmd, "show") == 0) {
+        if (argc < 3) { printf("%s[-] Missing name. Usage: template -show <name>%s\n", C_RED, C_RESET); return 1; }
+        cmd_show_template(argv[2]);
+    }
+    else if (strcmp(cmd, "-rm") == 0 || strcmp(cmd, "rm") == 0 || strcmp(cmd, "delete") == 0 || strcmp(cmd, "-delete") == 0) {
+        if (argc < 3) { printf("%s[-] Missing name. Usage: template -rm <name>%s\n", C_RED, C_RESET); return 1; }
+        cmd_remove_template(argv[2]);
+    }
+    else if (strcmp(cmd, "-export") == 0 || strcmp(cmd, "export") == 0) {
+        if (argc < 3) { printf("%s[-] Missing name. Usage: template -export <name>%s\n", C_RED, C_RESET); return 1; }
+        cmd_export_template(argv[2]);
+    }
+    else if (strcmp(cmd, "-import") == 0 || strcmp(cmd, "import") == 0) {
+        if (argc < 3) { printf("%s[-] Missing file path. Usage: template -import <file.tmpl>%s\n", C_RED, C_RESET); return 1; }
+        cmd_import_template(argv[2]);
+    }
+    else if (strcmp(cmd, "-list") == 0 || strcmp(cmd, "list") == 0) {
         cmd_list_templates();
     }
-    else if (strcmp(cmd, "-help") == 0 || strcmp(cmd, "--help") == 0 || strcmp(cmd, "help") == 0) {
-        print_help(argv[0]);
-    }
     else {
-        printf("%s[-] Unknown command '%s'.%s\n", C_RED, cmd, C_RESET);
         print_help(argv[0]);
-        return 1;
     }
 
     return 0;
