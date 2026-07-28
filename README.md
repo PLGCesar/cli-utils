@@ -84,5 +84,5 @@ make
 
 # 4. Reload your shell configuration
 source ~/.bashrc  # or source ~/.zshrc
-
+```
 -# (Open Source Project, under MIT License, feel free to use)
