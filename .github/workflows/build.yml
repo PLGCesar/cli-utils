@@ -12,13 +12,14 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Prepare Environment
+      - name: Prepare Environment (Linux/macOS)
+        if: runner.os != 'Windows'
         run: |
           touch ~/.bashrc
 
@@ -28,7 +29,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential gcc make
 
+      - name: Set up MinGW (Windows)
+        if: runner.os == 'Windows'
+        uses: egor-trefilov/setup-mingw@v2
+
       - name: Auto-Compile All Utilities
+        shell: bash
         run: |
           echo "Scanning subdirectories for Makefiles..."
           found=0
@@ -54,3 +60,26 @@ jobs:
             echo "[-] No Makefiles found in repository!"
             exit 1
           fi
+
+      - name: Run Automated CLI Execution Tests
+        shell: bash
+        run: |
+          echo "Executing CLI sanity checks..."
+
+          # Test ip-info help
+          if [ -f "ip-info/ip-info" ]; then ./ip-info/ip-info --help; fi
+          if [ -f "ip-info/ip-info.exe" ]; then ./ip-info/ip-info.exe --help; fi
+
+          # Test template list
+          if [ -f "template/template" ]; then ./template/template -list; fi
+          if [ -f "template/template.exe" ]; then ./template/template.exe -list; fi
+
+          # Test shredder help
+          if [ -f "shredder/shredder" ]; then ./shredder/shredder --help; fi
+          if [ -f "shredder/shredder.exe" ]; then ./shredder/shredder.exe --help; fi
+
+          # Test lit help
+          if [ -f "lit/lit" ]; then ./lit/lit -help; fi
+          if [ -f "lit/lit.exe" ]; then ./lit/lit.exe -help; fi
+
+          echo "[✔] All CLI execution sanity checks passed!"

@@ -1,10 +1,9 @@
 /*
- * ip-info.c v2.0 - Ultimate Cross-Platform Network CLI Tool
+ * ip-info.c v2.1 - Ultimate Cross-Platform Network CLI Tool
+ * Defensive Socket Parsing & Safe JSON Extraction.
  * Supports: Linux, macOS, Windows, Android (Termux/NDK).
- * Zero external heavy dependencies!
  */
 
-// Enable POSIX and GNU extensions under strict -std=c99 mode on Linux
 #define _POSIX_C_SOURCE 200809L
 #define _DEFAULT_SOURCE
 #define _GNU_SOURCE
@@ -72,9 +71,7 @@ static void init_tty_check(void) {
 #define C_GREEN   (use_colors ? "\033[32m" : "")
 #define C_YELLOW  (use_colors ? "\033[33m" : "")
 #define C_CYAN    (use_colors ? "\033[36m" : "")
-#define C_BLUE    (use_colors ? "\033[34m" : "")
 
-/* --- Data Structures --- */
 typedef struct {
     char ip[64];
     char country[64];
@@ -121,20 +118,32 @@ static void set_socket_timeout(int sock, int seconds) {
 #endif
 }
 
+/* --- Defensive Safe JSON Extractor --- */
 static void extract_json_val(const char *json, const char *key, char *out, size_t max_len) {
+    if (!json || !key || !out || max_len == 0) return;
     out[0] = '\0';
+
     char search_key[128];
     snprintf(search_key, sizeof(search_key), "\"%s\":", key);
-    char *pos = strstr(json, search_key);
+    const char *pos = strstr(json, search_key);
     if (!pos) return;
 
     pos += strlen(search_key);
-    while (*pos == ' ' || *pos == '\t') pos++;
+    while (*pos == ' ' || *pos == '\t' || *pos == '\r' || *pos == '\n') pos++;
 
     if (*pos == '"') {
         pos++;
-        char *end = strchr(pos, '"');
-        if (end) {
+        const char *end = strchr(pos, '"');
+        if (end && end > pos) {
+            size_t len = (size_t)(end - pos);
+            if (len >= max_len) len = max_len - 1;
+            strncpy(out, pos, len);
+            out[len] = '\0';
+        }
+    } else {
+        const char *end = pos;
+        while (*end && *end != ',' && *end != '}' && *end != ']' && *end != '\r' && *end != '\n') end++;
+        if (end > pos) {
             size_t len = (size_t)(end - pos);
             if (len >= max_len) len = max_len - 1;
             strncpy(out, pos, len);
@@ -166,6 +175,7 @@ static PublicGeoInfo get_public_ip_geo(void) {
                 close_socket(sock);
 
                 if (bytes > 0) {
+                    buffer[bytes] = '\0'; // Safe null termination
                     char *body = strstr(buffer, "\r\n\r\n");
                     if (body) {
                         body += 4;
@@ -202,6 +212,7 @@ static PublicGeoInfo get_public_ip_geo(void) {
                 int bytes = recv(sock, buffer, sizeof(buffer) - 1, 0);
                 close_socket(sock);
                 if (bytes > 0) {
+                    buffer[bytes] = '\0';
                     char *body = strstr(buffer, "\r\n\r\n");
                     if (body) {
                         body += 4;
@@ -481,7 +492,7 @@ static void print_json_output(PublicGeoInfo *geo) {
 }
 
 static void print_help(const char *prog_name) {
-    printf("%sip-info CLI Tool v2.0%s\n", C_BOLD, C_RESET);
+    printf("%sip-info CLI Tool v2.1%s\n", C_BOLD, C_RESET);
     printf("Usage: %s [options]\n\n", prog_name);
     printf("Options:\n");
     printf("  -e, --expert      Run Expert Mode directly without interactive prompt\n");
@@ -524,7 +535,7 @@ int main(int argc, char *argv[]) {
     }
 
     printf("=========================================\n");
-    printf("      %sIP-INFO CLI TOOL v2.0%s           \n", C_BOLD, C_RESET);
+    printf("      %sIP-INFO CLI TOOL v2.1%s           \n", C_BOLD, C_RESET);
     printf("=========================================\n");
 
     print_os_info();

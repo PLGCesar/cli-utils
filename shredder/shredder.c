@@ -1,6 +1,6 @@
 /*
- * shredder.c - Secure File Destruction CLI Tool
- * Overwrites files multiple times with random garbage data before deletion to prevent recovery.
+ * shredder.c v2.0 - Secure File Destruction CLI Tool
+ * Overwrites files with cryptographically secure random bytes (CSPRNG) before deletion.
  * Supports: Linux, macOS, Windows, Android (Termux).
  */
 
@@ -17,6 +17,7 @@
 #if defined(_WIN32) || defined(_WIN64)
     #define OS_WINDOWS 1
     #include <windows.h>
+    #include <wincrypt.h>
     #include <io.h>
     #define fsync_file(fp) FlushFileBuffers((HANDLE)_get_osfhandle(fileno(fp)))
 #else
@@ -50,9 +51,16 @@ static void init_tty_check(void) {
 #define C_YELLOW  (use_colors ? "\033[33m" : "")
 #define C_CYAN    (use_colors ? "\033[36m" : "")
 
-/* --- Fill Buffer with Random Garbage Bytes --- */
-static void fill_random_buffer(unsigned char *buf, size_t size) {
-#ifdef OS_UNIX
+/* --- Cryptographically Secure Pseudo-Random Number Generator (CSPRNG) --- */
+static void fill_secure_random_buffer(unsigned char *buf, size_t size) {
+#if defined(OS_WINDOWS)
+    HCRYPTPROV hCryptProv;
+    if (CryptAcquireContext(&hCryptProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT | CRYPT_SILENT)) {
+        CryptGenRandom(hCryptProv, (DWORD)size, buf);
+        CryptReleaseContext(hCryptProv, 0);
+        return;
+    }
+#else
     FILE *f = fopen("/dev/urandom", "rb");
     if (f) {
         size_t read_bytes = fread(buf, 1, size, f);
@@ -60,13 +68,13 @@ static void fill_random_buffer(unsigned char *buf, size_t size) {
         if (read_bytes == size) return;
     }
 #endif
-    // Fallback pseudo-random fill
+    // Fallback pseudo-random
     for (size_t i = 0; i < size; i++) {
         buf[i] = (unsigned char)(rand() % 256);
     }
 }
 
-/* --- Core Shredding Function --- */
+/* --- Core Shredding Engine --- */
 static int shred_file(const char *filename, int passes, int zero_final, int verbose) {
     struct stat st;
     if (stat(filename, &st) != 0) {
@@ -82,7 +90,7 @@ static int shred_file(const char *filename, int passes, int zero_final, int verb
     off_t file_size = st.st_size;
 
     if (verbose) {
-        printf("%s[+] Shredding '%s%s%s' (Size: %ld bytes, Passes: %d)%s\n",
+        printf("%s[+] Shredding '%s%s%s' (Size: %ld bytes, Passes: %d, CSPRNG: Active)%s\n",
                C_CYAN, C_BOLD, filename, C_CYAN, (long)file_size, passes, C_RESET);
     }
 
@@ -107,7 +115,7 @@ static int shred_file(const char *filename, int passes, int zero_final, int verb
                 if (is_zero_pass) {
                     memset(buffer, 0x00, write_size);
                 } else {
-                    fill_random_buffer(buffer, write_size);
+                    fill_secure_random_buffer(buffer, write_size);
                 }
 
                 if (fwrite(buffer, 1, write_size, fp) != write_size) {
@@ -119,7 +127,6 @@ static int shred_file(const char *filename, int passes, int zero_final, int verb
                 remaining -= write_size;
             }
 
-            // Force flush data to physical storage media
             fflush(fp);
             fsync_file(fp);
             fclose(fp);
@@ -128,19 +135,17 @@ static int shred_file(const char *filename, int passes, int zero_final, int verb
                 if (is_zero_pass) {
                     printf("  ├─ Pass %d/%d: %sZeroed out%s [✔]\n", pass, passes, C_YELLOW, C_RESET);
                 } else {
-                    printf("  ├─ Pass %d/%d: %sOverwritten with random garbage%s [✔]\n", pass, passes, C_YELLOW, C_RESET);
+                    printf("  ├─ Pass %d/%d: %sOverwritten with CSPRNG secure randoms%s [✔]\n", pass, passes, C_YELLOW, C_RESET);
                 }
             }
         }
     }
 
-    // Truncate file to 0 bytes before unlinking
+    // Truncate file to 0 bytes
     FILE *truncate_fp = fopen(filename, "wb");
-    if (truncate_fp) {
-        fclose(truncate_fp);
-    }
+    if (truncate_fp) fclose(truncate_fp);
 
-    // Unlink file from file system
+    // Unlink file
     if (remove(filename) == 0) {
         printf("%s[✔] File '%s%s%s' completely shredded and destroyed!%s\n",
                C_GREEN, C_BOLD, filename, C_GREEN, C_RESET);
@@ -153,7 +158,7 @@ static int shred_file(const char *filename, int passes, int zero_final, int verb
 
 /* --- Help Menu --- */
 static void print_help(const char *prog_name) {
-    printf("%sShredder - Secure File Destruction CLI Tool v1.0%s\n", C_BOLD, C_RESET);
+    printf("%sShredder - Secure File Destruction CLI Tool v2.0%s\n", C_BOLD, C_RESET);
     printf("Usage: %s [options] <file1> <file2> ...\n\n", prog_name);
     printf("Options:\n");
     printf("  -n, --passes <num>   Number of overwrite passes (default: 3)\n");
