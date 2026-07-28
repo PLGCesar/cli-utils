@@ -1,6 +1,6 @@
 # Target compiler and flags
 CC ?= gcc
-CFLAGS ?= -O3 -Wall -Wextra -std=c99
+CFLAGS ?= -Wall -Wextra -O2 -std=c99 -Wno-format-truncation
 TARGET = markwarp
 HOME_BIN := $(HOME)/$(TARGET)
 DIR := $(shell pwd)

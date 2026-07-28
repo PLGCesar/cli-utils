@@ -1,6 +1,6 @@
 # Compiler & Flags
 CC ?= gcc
-CFLAGS ?= -O3 -Wall -Wextra -std=c99
+CFLAGS ?= -Wall -Wextra -O3 -std=c99 -Wno-format-truncation
 TARGET = genpass
 HOME_BIN := $(HOME)/$(TARGET)
 RC_FILE := $(shell if [ -f "$$HOME/.zshrc" ]; then echo "$$HOME/.zshrc"; else echo "$$HOME/.bashrc"; fi)

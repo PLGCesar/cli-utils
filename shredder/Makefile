@@ -1,17 +1,15 @@
 # Compiler & Flags
 CC      ?= gcc
-CFLAGS ?= -Wall -Wextra -O2 -std=c99 -Wno-format-truncation
-TARGET  = ip-info
-ALIAS   = ipinfo
-SRC     = ip-info.c
+CFLAGS  ?= -Wall -Wextra -O2 -std=c99 -Wno-format-truncation
+TARGET  = shredder
+ALIAS   = shredder
+SRC     = shredder.c
 
 # OS Detection
 ifeq ($(OS),Windows_NT)
-    LIBS = -lws2_32 -liphlpapi
     RM = del /Q /F
     EXE = .exe
 else
-    LIBS =
     RM = rm -f
     EXE =
 endif
@@ -35,7 +33,7 @@ all: $(BIN)
 
 # Compile target binary
 $(BIN): $(SRC)
-	$(CC) $(CFLAGS) $(SRC) -o $(BIN) $(LIBS)
+	$(CC) $(CFLAGS) $(SRC) -o $(BIN)
 
 # Clean build artifacts
 clean:

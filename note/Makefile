@@ -1,5 +1,5 @@
 CC ?= gcc
-CFLAGS ?= -O3 -Wall -Wextra -std=c99
+CFLAGS ?= -Wall -Wextra -O3 -std=c99 -Wno-format-truncation
 TARGET = note
 HOME_BIN := $(HOME)/note
 
