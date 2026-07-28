@@ -22,3 +22,11 @@ Any of our utilities REQUIRE:
 - ### Name: "Genpass"
 - ### Description: "A universal password generator that includes special characters, uppercase and lowercase letters, and numbers (up to 16 characters)."
 - ### Language: C (using gcc)
+
+- ### Name: IP-Info
+- ### Description: "A cross-platform network inspector that detects WAN/LAN IPs, geolocation, ISP, DNS resolvers, proxies, and includes an interactive Expert Mode with latency testing."
+- ### Language: C (using gcc/clang)
+
+- ### Name: Template
+- ### Description: "A directory structure scaffolder that maps folder hierarchies, saves them as templates, and unpacks them anywhere. Features ASCII tree previews, export to Downloads, and import capabilities."
+- ### Language: C (using gcc/clang)
