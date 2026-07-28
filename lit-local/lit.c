@@ -1,7 +1,7 @@
 /*
- * lit.c v1.1 - Ultra-lightweight Local Snapshot & Versioning CLI Utility
+ * lit.c v1.2 - Ultra-lightweight Local Snapshot & Versioning CLI Utility
  * A simple offline git alternative that snapshots files/folders into .snapshot/
- * Fix: Clean workspace before loading snapshots to ensure exact 1:1 state restore!
+ * Fix: Added #include <windows.h> for Win32 Console API types (HANDLE, DWORD).
  * Supports: Linux, macOS, Windows, Android (Termux).
  */
 
@@ -18,6 +18,7 @@
 
 #if defined(_WIN32) || defined(_WIN64)
     #define OS_WINDOWS 1
+    #include <windows.h>
     #include <direct.h>
     #include <io.h>
     #define mkdir_native(path) _mkdir(path)
@@ -84,7 +85,7 @@ static int copy_file(const char *src, const char *dst) {
         return 0;
     }
 
-    char buffer[65536]; // 64KB chunk
+    char buffer[65536];
     size_t bytes;
     while ((bytes = fread(buffer, 1, sizeof(buffer), in)) > 0) {
         fwrite(buffer, 1, bytes, out);
@@ -105,7 +106,6 @@ static void wipe_working_dir(const char *path, const char *ignore_folder) {
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
             continue;
 
-        // DO NOT DELETE .snapshot folder!
         if (ignore_folder && strcmp(entry->d_name, ignore_folder) == 0)
             continue;
 
@@ -290,10 +290,8 @@ static void cmd_load(const char *snap_name) {
 
     printf("%s[+] Cleaning current workspace and restoring snapshot '%s%s%s'...%s\n", C_CYAN, C_BOLD, selected_snap, C_CYAN, C_RESET);
 
-    // 1. Wipe current workspace completely (protecting .snapshot folder)
     wipe_working_dir(".", ".snapshot");
 
-    // 2. Unpack snapshot back into workspace
     int files_copied = 0;
     copy_dir_recursive(snap_path, ".", NULL, &files_copied);
 
@@ -335,7 +333,7 @@ static void cmd_list(void) {
 
 /* --- Help Menu --- */
 static void print_help(const char *prog_name) {
-    printf("%slit - Ultra-lightweight Local Versioning CLI Tool v1.1%s\n", C_BOLD, C_RESET);
+    printf("%slit - Ultra-lightweight Local Versioning CLI Tool v1.2%s\n", C_BOLD, C_RESET);
     printf("Usage: %s <command> [args]\n\n", prog_name);
     printf("Commands:\n");
     printf("  -init, init              Initialize .snapshot/ and save initial v0/v1 snapshot\n");
