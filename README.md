@@ -56,6 +56,15 @@ Before using or compiling any utility, ensure you have:
 - **Description:** A universal password generator that generates secure strings including special characters, uppercase/lowercase letters, and numbers (up to 16 characters).
 - **Language:** C (gcc)
 
+### Name: Shredder
+- ### Description: "A secure file destruction tool that overwrites sensitive files multiple times with random garbage data before deletion to prevent disk recovery."
+- ### Language: C (using gcc/clang)
+
+### Name: Lit
+- ### Description: "An ultra-fast local Git alternative that creates versioned directory snapshots in .snapshot/ with instant restore capabilities."
+- ### Language: C (using gcc/clang)
+
+
 ---
 
 ## 📦 Installation & Quickstart
@@ -74,3 +83,4 @@ make
 
 # 4. Reload your shell configuration
 source ~/.bashrc  # or source ~/.zshrc
+
