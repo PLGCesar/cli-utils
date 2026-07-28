@@ -1,6 +1,6 @@
 # Compiler & Flags
 CC      ?= gcc
-CFLAGS  ?= -Wall -Wextra -O2 -std=c99
+CFLAGS ?= -Wall -Wextra -O2 -std=c99 -Wno-format-truncation
 TARGET  = template
 ALIAS   = template
 SRC     = template.c
