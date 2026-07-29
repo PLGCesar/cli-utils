@@ -80,10 +80,6 @@ jobs:
           if [ -f "template/template" ]; then ./template/template -list; fi
           if [ -f "template/template.exe" ]; then ./template/template.exe -list; fi
 
-          # Test shredder help
-          if [ -f "shredder/shredder" ]; then ./shredder/shredder --help; fi
-          if [ -f "shredder/shredder.exe" ]; then ./shredder/shredder.exe --help; fi
-
           # Test lit help
           if [ -f "lit/lit" ]; then ./lit/lit -help; fi
           if [ -f "lit/lit.exe" ]; then ./lit/lit.exe -help; fi
