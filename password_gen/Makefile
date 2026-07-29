@@ -1,33 +1,42 @@
 # Compiler & Flags
-CC ?= gcc
-CFLAGS ?= -Wall -Wextra -O3 -std=c99 -Wno-format-truncation
-TARGET = genpass
-HOME_BIN := $(HOME)/$(TARGET)
-RC_FILE := $(shell if [ -f "$$HOME/.zshrc" ]; then echo "$$HOME/.zshrc"; else echo "$$HOME/.bashrc"; fi)
+CC      ?= gcc
+CFLAGS  ?= -Wall -Wextra -O2 -std=c99 -Wno-format-truncation
+TARGET  = genpass
+ALIAS   = genpass
+SRC     = genpass.c
+LIBS    = -lm
 
-all: $(TARGET) install_alias
+# OS Detection
+ifeq ($(OS),Windows_NT)
+    LIBS += -ladvapi32 -lbcrypt
+    EXE = .exe
+else
+    EXE =
+endif
+
+BIN = $(TARGET)$(EXE)
+
+# Build binary and hook shell alias in a single command
+all: $(BIN)
+	@SHELL_RC="$${HOME}/.bashrc"; \
+	if [ -f "$${HOME}/.zshrc" ]; then SHELL_RC="$${HOME}/.zshrc"; fi; \
+	touch "$$SHELL_RC" 2>/dev/null || true; \
+	EXEC_PATH="$$(pwd)/$(BIN)"; \
+	ALIAS_CMD="alias $(ALIAS)='$$EXEC_PATH'"; \
+	if grep -q "alias $(ALIAS)=" "$$SHELL_RC" 2>/dev/null; then \
+		echo "[+] Successfully built! (Alias '$(ALIAS)' is already active in $$SHELL_RC)"; \
+	else \
+		echo "$$ALIAS_CMD" >> "$$SHELL_RC" 2>/dev/null || true; \
+		echo "[+] Successfully built AND hooked alias '$(ALIAS)' to $$SHELL_RC!"; \
+		echo "[!] Run 'source $$SHELL_RC' or restart your terminal to use '$(ALIAS)'."; \
+	fi
 
 # Compile target binary
-$(TARGET): genpass.c
-	$(CC) $(CFLAGS) genpass.c -o $(TARGET)
+$(BIN): $(SRC)
+	$(CC) $(CFLAGS) $(SRC) -o $(BIN) $(LIBS)
 
-# Move binary to Home and add alias configuration
-install_alias: $(TARGET)
-	@cp -f $(TARGET) $(HOME_BIN)
-	@chmod +x $(HOME_BIN)
-	@for rc in ~/.bashrc ~/.zshrc; do \
-		if [ -f $$rc ]; then \
-			grep -q "alias genpass=" $$rc 2>/dev/null || ( \
-				echo "" >> $$rc && \
-				echo "# genpass CLI alias" >> $$rc && \
-				echo 'alias genpass="$(HOME_BIN)"' >> $$rc \
-			); \
-		fi \
-	done
-	@echo "\033[32m[✓] Compiled and alias created successfully in $(RC_FILE)!\033[0m"
-	@echo "Run 'source $(RC_FILE)' and test 'genpass' from ANY folder!"
-
+# Clean build artifacts
 clean:
-	rm -f $(TARGET) $(HOME_BIN)
+	-rm -f $(BIN) *.exe *.o
 
-.PHONY: all install_alias clean
+.PHONY: all clean
