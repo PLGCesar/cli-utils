@@ -1,9 +1,7 @@
 /*
- * genpass.c v2.1 - Military-Grade CSPRNG Password & Passphrase Generator
- * Features: Direct Kernel Syscalls (getrandom/BCryptGenRandom/arc4random_buf),
- *           Hardware Entropy Mixing (nanosecond CPU time + stack memory XOR),
- *           customizable character sets, bulk generation, passphrase mode,
- *           and bit-entropy evaluation.
+ * genpass.c v2.3 - Advanced CSPRNG Password & Passphrase Generator
+ * Features: Flexible CLI parser (positional args + flags), CSPRNG entropy,
+ *           hardware entropy mixing, passphrase mode, and bit-entropy rating.
  * Supports: Linux, macOS, Windows, Android (Termux).
  */
 
@@ -21,7 +19,7 @@
 #if defined(_WIN32) || defined(_WIN64)
     #define OS_WINDOWS 1
     #include <windows.h>
-    #include <bcrypt.h>
+    #include <wincrypt.h>
     #include <io.h>
     #include <process.h>
     #define getpid_native() _getpid()
@@ -31,9 +29,6 @@
     #include <unistd.h>
     #include <sys/types.h>
     #define getpid_native() getpid()
-    #if defined(__linux__) || defined(__ANDROID__)
-        #include <sys/random.h>
-    #endif
 #endif
 
 /* --- TTY & Color Support --- */
@@ -88,33 +83,23 @@ static void get_secure_random_bytes(unsigned char *buf, size_t size) {
     int fetched = 0;
 
 #if defined(OS_WINDOWS)
-    // Windows CNG (Cryptography Next Generation) API
-    if (BCryptGenRandom(NULL, buf, (ULONG)size, BCRYPT_USE_SYSTEM_PREFERRED_RNG) == 0) {
+    HCRYPTPROV hCryptProv;
+    if (CryptAcquireContext(&hCryptProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT | CRYPT_SILENT)) {
+        CryptGenRandom(hCryptProv, (DWORD)size, buf);
+        CryptReleaseContext(hCryptProv, 0);
         fetched = 1;
     }
 #elif defined(__APPLE__) || defined(__FreeBSD__)
-    // macOS / BSD Hardware ChaCha20 Engine
     arc4random_buf(buf, size);
     fetched = 1;
-#elif defined(__linux__) || defined(__ANDROID__)
-    // Linux / Android Direct Kernel Syscall (getrandom)
-    ssize_t res = getrandom(buf, size, 0);
-    if (res == (ssize_t)size) {
-        fetched = 1;
+#else
+    FILE *f = fopen("/dev/urandom", "rb");
+    if (f) {
+        size_t read_bytes = fread(buf, 1, size, f);
+        fclose(f);
+        if (read_bytes == size) fetched = 1;
     }
 #endif
-
-    // Fallback to /dev/urandom if kernel syscall is unavailable
-    if (!fetched) {
-#if defined(OS_UNIX)
-        FILE *f = fopen("/dev/urandom", "rb");
-        if (f) {
-            size_t read_bytes = fread(buf, 1, size, f);
-            fclose(f);
-            if (read_bytes == size) fetched = 1;
-        }
-#endif
-    }
 
     if (!fetched) {
         for (size_t i = 0; i < size; i++) {
@@ -129,7 +114,7 @@ static void get_secure_random_bytes(unsigned char *buf, size_t size) {
 
     for (size_t i = 0; i < size; i++) {
         unsigned char hw_junk = (unsigned char)((cpu_nano >> (i % 8)) ^ (stack_addr >> (i % 4)) ^ (unsigned int)current_pid);
-        buf[i] ^= hw_junk; // XOR mixing
+        buf[i] ^= hw_junk;
     }
 }
 
@@ -189,13 +174,22 @@ static void generate_password(int length, int inc_upper, int inc_lower, int inc_
     // Bit-Entropy Calculation
     double entropy = (double)length * (log((double)charset_len) / log(2.0));
 
-    const char *strength_label = C_GREEN "Ultra Strong 🛡️" C_RESET;
-    if (entropy < 40) strength_label = C_RED "Weak ⚠️" C_RESET;
-    else if (entropy < 64) strength_label = C_YELLOW "Moderate 🟡" C_RESET;
-    else if (entropy < 100) strength_label = C_CYAN "Strong 🟢" C_RESET;
+    const char *strength_color = C_GREEN;
+    const char *strength_text = "Ultra Strong 🛡️";
+
+    if (entropy < 40) {
+        strength_color = C_RED;
+        strength_text = "Weak ⚠️";
+    } else if (entropy < 64) {
+        strength_color = C_YELLOW;
+        strength_text = "Moderate 🟡";
+    } else if (entropy < 100) {
+        strength_color = C_CYAN;
+        strength_text = "Strong 🟢";
+    }
 
     printf("  ├─ Key: %s%s%s\n", C_BOLD, pwd, C_RESET);
-    printf("  └─ Entropy: %.1f bits (%s)\n", entropy, strength_label);
+    printf("  └─ Entropy: %.1f bits (%s%s%s)\n", entropy, strength_color, strength_text, C_RESET);
 
     free(pwd);
 }
@@ -214,16 +208,19 @@ static void generate_passphrase(int num_words) {
 
 /* --- Help Menu --- */
 static void print_help(const char *prog_name) {
-    printf("%sgenpass - Military-Grade CSPRNG Key & Passphrase Generator v2.1%s\n", C_BOLD, C_RESET);
-    printf("Usage: %s [options]\n\n", prog_name);
+    printf("%sgenpass - Advanced CSPRNG Key & Passphrase Generator v2.3%s\n", C_BOLD, C_RESET);
+    printf("Usage: %s [length] [count] [options]\n\n", prog_name);
+    printf("Positional Arguments:\n");
+    printf("  [length]             Set key length directly (e.g. genpass 32)\n");
+    printf("  [count]              Set number of keys directly (e.g. genpass 32 5)\n\n");
     printf("Options:\n");
     printf("  -l, --length <num>    Password length in characters (default: 24)\n");
     printf("  -c, --count <num>     Number of keys to generate (default: 1)\n");
     printf("  -p, --passphrase      Generate Diceware passphrase instead of random string\n");
     printf("  -w, --words <num>     Number of words for passphrase mode (default: 4)\n");
-    printf("  --no-sym              Exclude special symbols (!@#$%...)\n");
-    printf("  --no-num              Exclude numbers (0-9)\n");
-    printf("  --no-upper            Exclude uppercase letters (A-Z)\n");
+    printf("  -s, --no-sym          Exclude special symbols (!@#%%...)\n");
+    printf("  -n, --no-num          Exclude numbers (0-9)\n");
+    printf("  -u, --no-upper        Exclude uppercase letters (A-Z)\n");
     printf("  --no-lower            Exclude lowercase letters (a-z)\n");
     printf("  -x, --no-similar      Exclude confusing characters (1,l,I,0,O,o)\n");
     printf("  -h, --help            Show this help menu\n\n");
@@ -244,28 +241,48 @@ int main(int argc, char *argv[]) {
     int inc_syms = 1;
     int exc_similar = 0;
 
+    int positional_idx = 0;
+
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
             print_help(argv[0]);
             return 0;
         } else if (strcmp(argv[i], "-l") == 0 || strcmp(argv[i], "--length") == 0) {
             if (i + 1 < argc) { length = atoi(argv[++i]); if (length <= 0) length = 24; }
+        } else if (strncmp(argv[i], "-l", 2) == 0 && strlen(argv[i]) > 2) {
+            length = atoi(argv[i] + 2);
+            if (length <= 0) length = 24;
         } else if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--count") == 0) {
             if (i + 1 < argc) { count = atoi(argv[++i]); if (count <= 0) count = 1; }
+        } else if (strncmp(argv[i], "-c", 2) == 0 && strlen(argv[i]) > 2) {
+            count = atoi(argv[i] + 2);
+            if (count <= 0) count = 1;
         } else if (strcmp(argv[i], "-p") == 0 || strcmp(argv[i], "--passphrase") == 0) {
             is_passphrase = 1;
         } else if (strcmp(argv[i], "-w") == 0 || strcmp(argv[i], "--words") == 0) {
             if (i + 1 < argc) { words = atoi(argv[++i]); if (words <= 0) words = 4; }
-        } else if (strcmp(argv[i], "--no-sym") == 0) {
+        } else if (strcmp(argv[i], "--no-sym") == 0 || strcmp(argv[i], "-s") == 0) {
             inc_syms = 0;
-        } else if (strcmp(argv[i], "--no-num") == 0) {
+        } else if (strcmp(argv[i], "--no-num") == 0 || strcmp(argv[i], "-n") == 0) {
             inc_nums = 0;
-        } else if (strcmp(argv[i], "--no-upper") == 0) {
+        } else if (strcmp(argv[i], "--no-upper") == 0 || strcmp(argv[i], "-u") == 0) {
             inc_upper = 0;
         } else if (strcmp(argv[i], "--no-lower") == 0) {
             inc_lower = 0;
         } else if (strcmp(argv[i], "-x") == 0 || strcmp(argv[i], "--no-similar") == 0) {
             exc_similar = 1;
+        } else if (argv[i][0] != '-') {
+            // Positional arguments parser: "genpass 32" or "genpass 32 5"
+            int num = atoi(argv[i]);
+            if (num > 0) {
+                if (positional_idx == 0) {
+                    length = num;
+                    positional_idx++;
+                } else if (positional_idx == 1) {
+                    count = num;
+                    positional_idx++;
+                }
+            }
         }
     }
 
