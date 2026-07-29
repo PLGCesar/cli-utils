@@ -1,13 +1,14 @@
 /*
- * genpass.c v2.3 - Advanced CSPRNG Password & Passphrase Generator
+ * genpass.c v2.4 - Military-Grade CSPRNG Password & Passphrase Generator
  * Features: Flexible CLI parser (positional args + flags), CSPRNG entropy,
- *           hardware entropy mixing, passphrase mode, and bit-entropy rating.
+ *           hardware entropy mixing, passphrase mode, and bit-entropy evaluation.
  * Supports: Linux, macOS, Windows, Android (Termux).
  */
 
 #define _POSIX_C_SOURCE 200809L
 #define _DEFAULT_SOURCE
 #define _GNU_SOURCE
+#define _DARWIN_C_SOURCE
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -78,7 +79,7 @@ static uint64_t get_nanoseconds(void) {
 #endif
 }
 
-/* --- Cryptographically Secure Kernel Syscall + Hardware Entropy Mixer --- */
+/* --- Cryptographically Secure Kernel CSPRNG + Hardware Entropy Mixer --- */
 static void get_secure_random_bytes(unsigned char *buf, size_t size) {
     int fetched = 0;
 
@@ -89,9 +90,6 @@ static void get_secure_random_bytes(unsigned char *buf, size_t size) {
         CryptReleaseContext(hCryptProv, 0);
         fetched = 1;
     }
-#elif defined(__APPLE__) || defined(__FreeBSD__)
-    arc4random_buf(buf, size);
-    fetched = 1;
 #else
     FILE *f = fopen("/dev/urandom", "rb");
     if (f) {
@@ -208,7 +206,7 @@ static void generate_passphrase(int num_words) {
 
 /* --- Help Menu --- */
 static void print_help(const char *prog_name) {
-    printf("%sgenpass - Advanced CSPRNG Key & Passphrase Generator v2.3%s\n", C_BOLD, C_RESET);
+    printf("%sgenpass - Advanced CSPRNG Key & Passphrase Generator v2.4%s\n", C_BOLD, C_RESET);
     printf("Usage: %s [length] [count] [options]\n\n", prog_name);
     printf("Positional Arguments:\n");
     printf("  [length]             Set key length directly (e.g. genpass 32)\n");
@@ -272,7 +270,6 @@ int main(int argc, char *argv[]) {
         } else if (strcmp(argv[i], "-x") == 0 || strcmp(argv[i], "--no-similar") == 0) {
             exc_similar = 1;
         } else if (argv[i][0] != '-') {
-            // Positional arguments parser: "genpass 32" or "genpass 32 5"
             int num = atoi(argv[i]);
             if (num > 0) {
                 if (positional_idx == 0) {
