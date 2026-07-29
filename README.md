@@ -27,7 +27,6 @@ Before using or compiling any utility, ensure you have:
 | 🚀 **`warp/mark`** | Directory bookmarking and instant navigation tool | `C99` + `Bash/Sh` |
 | 📝 **`note`** | CLI note manager with priority levels and shell startup reminders | `C99` |
 | 🔐 **`genpass`** | Secure password & key generator with custom character sets | `C99` |
-| 🛡️ **`shredder`** | Secure file destruction tool with multi-pass random data overwriting | `C99` |
 | ⚡ **`lit`** | Ultra-fast local Git alternative for folder snapshot versioning | `C99` |
 
 ---
@@ -57,10 +56,6 @@ Before using or compiling any utility, ensure you have:
 ### 🔐 Genpass
 - **Description:** A universal password generator that generates secure strings including special characters, uppercase/lowercase letters, and numbers (up to 16 characters).
 - **Language:** C (gcc)
-
-### 🛡️ Shredder
-- **Description:** A secure file destruction tool that overwrites sensitive files multiple times with random garbage data before unlinking to prevent disk recovery.
-- **Language:** C (gcc/clang)
 
 ### ⚡ Lit
 - **Description:** An ultra-fast local Git alternative that creates versioned directory snapshots in `.snapshot/` with instant restore capabilities.
