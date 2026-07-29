@@ -1,7 +1,6 @@
 /*
- * lit.c v1.2 - Ultra-lightweight Local Snapshot & Versioning CLI Utility
- * A simple offline git alternative that snapshots files/folders into .snapshot/
- * Fix: Added #include <windows.h> for Win32 Console API types (HANDLE, DWORD).
+ * lit.c v1.3 - Ultra-lightweight Local Snapshot & Versioning CLI Utility
+ * Adds: "diff" command and .litignore support
  * Supports: Linux, macOS, Windows, Android (Termux).
  */
 
@@ -55,6 +54,77 @@ static void init_tty_check(void) {
 #define C_YELLOW  (use_colors ? "\033[33m" : "")
 #define C_CYAN    (use_colors ? "\033[36m" : "")
 
+/* --- .litignore Support --- */
+#define MAX_IGNORES 256
+#define MAX_IGNORE_LEN 256
+static char ignore_patterns[MAX_IGNORES][MAX_IGNORE_LEN];
+static int ignore_count = 0;
+
+static void load_litignore(void) {
+    ignore_count = 0;
+    FILE *f = fopen(".litignore", "r");
+    if (!f) return;
+    char line[512];
+    while (fgets(line, sizeof(line), f)) {
+        char *s = line;
+        while (*s && (*s == ' ' || *s == '\t')) s++;
+        if (*s == '\0' || *s == '\n' || *s == '#') continue;
+        // strip newline and trailing spaces
+        char *e = s + strlen(s) - 1;
+        while (e >= s && (*e == '\n' || *e == '\r' || *e == ' ' || *e == '\t')) { *e = '\0'; e--; }
+        if (strlen(s) > 0 && ignore_count < MAX_IGNORES) {
+            strncpy(ignore_patterns[ignore_count], s, MAX_IGNORE_LEN-1);
+            ignore_patterns[ignore_count][MAX_IGNORE_LEN-1] = '\0';
+            ignore_count++;
+        }
+    }
+    fclose(f);
+}
+
+static int ends_with(const char *str, const char *suffix) {
+    size_t l1 = strlen(str), l2 = strlen(suffix);
+    if (l2 > l1) return 0;
+    return strcmp(str + l1 - l2, suffix) == 0;
+}
+
+static int starts_with(const char *str, const char *prefix) {
+    return strncmp(str, prefix, strlen(prefix)) == 0;
+}
+
+static int should_ignore(const char *relpath, int is_dir) {
+    if (!relpath) return 0;
+    // Always ignore .snapshot itself
+    if (strcmp(relpath, ".snapshot") == 0) return 1;
+    for (int i = 0; i < ignore_count; i++) {
+        const char *p = ignore_patterns[i];
+        size_t lp = strlen(p);
+        if (lp == 0) continue;
+        if (p[0] == '*') {
+            // suffix match: *suffix
+            if (ends_with(relpath, p + 1)) return 1;
+        } else if (p[lp-1] == '*') {
+            // prefix match: prefix*
+            char tmp[512];
+            strncpy(tmp, p, lp-1);
+            tmp[lp-1] = '\0';
+            if (starts_with(relpath, tmp)) return 1;
+        } else if (p[lp-1] == '/') {
+            // directory pattern
+            if (is_dir && starts_with(relpath, p)) return 1;
+            // also match basename when pattern equals dirname/
+            if (strcmp(relpath, p) == 0) return 1;
+        } else {
+            // exact match or basename match
+            if (strcmp(relpath, p) == 0) return 1;
+            // also match if relpath ends with /<pattern>
+            char tmp[512];
+            snprintf(tmp, sizeof(tmp), "/%s", p);
+            if (ends_with(relpath, tmp)) return 1;
+        }
+    }
+    return 0;
+}
+
 /* --- Directory Creation Helper (mkdir -p) --- */
 static void create_dir_p(const char *path) {
     char temp[1024];
@@ -96,7 +166,7 @@ static int copy_file(const char *src, const char *dst) {
     return 1;
 }
 
-/* --- Recursively Wipe Working Directory (Ignores .snapshot) --- */
+/* --- Recursively Wipe Working Directory (Ignores .snapshot and .litignore) --- */
 static void wipe_working_dir(const char *path, const char *ignore_folder) {
     DIR *dir = opendir(path);
     if (!dir) return;
@@ -109,12 +179,18 @@ static void wipe_working_dir(const char *path, const char *ignore_folder) {
         if (ignore_folder && strcmp(entry->d_name, ignore_folder) == 0)
             continue;
 
-        char full_path[1024];
+        char full_path[4096];
         snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
 
         struct stat st;
         if (stat(full_path, &st) == 0) {
-            if (S_ISDIR(st.st_mode)) {
+            int is_dir = S_ISDIR(st.st_mode);
+            // build relative path from current directory
+            char rel[4096];
+            snprintf(rel, sizeof(rel), "%s", entry->d_name);
+            if (should_ignore(rel, is_dir)) continue;
+
+            if (is_dir) {
                 wipe_working_dir(full_path, NULL);
                 rmdir_native(full_path);
             } else {
@@ -125,7 +201,7 @@ static void wipe_working_dir(const char *path, const char *ignore_folder) {
     closedir(dir);
 }
 
-/* --- Recursive Directory Copy (Ignores .snapshot) --- */
+/* --- Recursive Directory Copy (Ignores .snapshot and .litignore) --- */
 static void copy_dir_recursive(const char *src_dir, const char *dst_dir, const char *ignore_folder, int *files_copied) {
     DIR *dir = opendir(src_dir);
     if (!dir) return;
@@ -140,14 +216,20 @@ static void copy_dir_recursive(const char *src_dir, const char *dst_dir, const c
         if (ignore_folder && strcmp(entry->d_name, ignore_folder) == 0)
             continue;
 
-        char src_path[1024];
-        char dst_path[1024];
+        char src_path[4096];
+        char dst_path[4096];
         snprintf(src_path, sizeof(src_path), "%s/%s", src_dir, entry->d_name);
         snprintf(dst_path, sizeof(dst_path), "%s/%s", dst_dir, entry->d_name);
 
         struct stat st;
         if (stat(src_path, &st) == 0) {
-            if (S_ISDIR(st.st_mode)) {
+            int is_dir = S_ISDIR(st.st_mode);
+            // relative path for ignore checks (use name only here)
+            char rel[4096];
+            snprintf(rel, sizeof(rel), "%s", entry->d_name);
+            if (should_ignore(rel, is_dir)) continue;
+
+            if (is_dir) {
                 copy_dir_recursive(src_path, dst_path, ignore_folder, files_copied);
             } else if (S_ISREG(st.st_mode)) {
                 if (copy_file(src_path, dst_path)) {
@@ -157,6 +239,28 @@ static void copy_dir_recursive(const char *src_dir, const char *dst_dir, const c
         }
     }
     closedir(dir);
+}
+
+/* --- File content comparison --- */
+static int files_differ(const char *a, const char *b) {
+    FILE *fa = fopen(a, "rb");
+    if (!fa) return 1;
+    FILE *fb = fopen(b, "rb");
+    if (!fb) { fclose(fa); return 1; }
+
+    char bufA[65536], bufB[65536];
+    size_t ra, rb;
+    int diff = 0;
+    while (1) {
+        ra = fread(bufA, 1, sizeof(bufA), fa);
+        rb = fread(bufB, 1, sizeof(bufB), fb);
+        if (ra != rb || (ra > 0 && memcmp(bufA, bufB, ra) != 0)) { diff = 1; break; }
+        if (ra == 0) break;
+    }
+
+    fclose(fa);
+    fclose(fb);
+    return diff;
 }
 
 /* --- Helper: Get Next Auto Version Number (v0, v1, v2...) --- */
@@ -219,6 +323,7 @@ static void cmd_init(void) {
     struct stat st;
     int snapshot_existed = (stat(".snapshot", &st) == 0 && S_ISDIR(st.st_mode));
 
+    load_litignore();
     create_dir_p(".snapshot");
 
     int ver_num = get_next_version_num();
@@ -249,6 +354,8 @@ static void cmd_snap(const char *snap_name) {
         return;
     }
 
+    load_litignore();
+
     char target_path[1024];
     snprintf(target_path, sizeof(target_path), ".snapshot/%s", snap_name);
 
@@ -267,6 +374,8 @@ static void cmd_load(const char *snap_name) {
         printf("%s[-] Repository not initialized! Run 'lit -init' first.%s\n", C_RED, C_RESET);
         return;
     }
+
+    load_litignore();
 
     char selected_snap[128];
     if (snap_name && strlen(snap_name) > 0) {
@@ -299,6 +408,148 @@ static void cmd_load(const char *snap_name) {
            C_GREEN, C_BOLD, selected_snap, C_GREEN, files_copied, C_RESET);
 }
 
+/* --- COMMAND: lit -diff [name] --- */
+static void cmd_diff(const char *snap_name) {
+    struct stat st;
+    if (stat(".snapshot", &st) != 0 || !S_ISDIR(st.st_mode)) {
+        printf("%s[-] Repository not initialized! Run 'lit -init' first.%s\n", C_RED, C_RESET);
+        return;
+    }
+
+    load_litignore();
+
+    char selected_snap[128];
+    if (snap_name && strlen(snap_name) > 0) {
+        snprintf(selected_snap, sizeof(selected_snap), "%s", snap_name);
+    } else {
+        if (!get_latest_snapshot_name(selected_snap, sizeof(selected_snap))) {
+            printf("%s[-] No snapshots found in .snapshot/%s\n", C_RED, C_RESET);
+            return;
+        }
+        printf("%s[i] No version specified. Defaulting to latest snapshot '%s%s%s'.%s\n",
+               C_YELLOW, C_BOLD, selected_snap, C_YELLOW, C_RESET);
+    }
+
+    char snap_path[1024];
+    snprintf(snap_path, sizeof(snap_path), ".snapshot/%s", selected_snap);
+
+    if (stat(snap_path, &st) != 0 || !S_ISDIR(st.st_mode)) {
+        printf("%s[-] Snapshot '%s' does not exist in .snapshot/%s\n", C_RED, selected_snap, C_RESET);
+        return;
+    }
+
+    // Walk snapshot and compare to workspace
+    int added = 0, removed = 0, modified = 0;
+
+    // Helper: check snapshot -> workspace (deleted/modified)
+    DIR *dir = opendir(snap_path);
+    if (!dir) return;
+
+    struct dirent *entry;
+    // Use a stack-less recursion approach via helper function
+    // We'll implement a small recursive lambda-like function using a nested function is not portable in C,
+    // so create a static recursive function below and call it with root paths.
+
+    // We'll call a recursive comparer implemented further down.
+    // For simplicity reuse a quick inline recursive comparator here by declaring a function pointer not possible — implement functions below.
+    // So call compare_dirs declared below.
+    
+    // We'll use compare_dirs which prints and updates counters.
+    
+    // Forward declare and call
+    extern void compare_dirs(const char *snap_root, const char *work_root, const char *snap_rel, int *added, int *removed, int *modified);
+    compare_dirs(snap_path, ".", "", &added, &removed, &modified);
+
+    printf("%s[+] Diff against snapshot '%s%s%s':%s\n", C_CYAN, C_BOLD, selected_snap, C_CYAN, C_RESET);
+    if (added == 0 && removed == 0 && modified == 0) {
+        printf("  %s[=] No differences found.%s\n", C_GREEN, C_RESET);
+    } else {
+        if (added) printf("  %s+ %d added%s\n", C_GREEN, added, C_RESET);
+        if (removed) printf("  %s- %d removed%s\n", C_RED, removed, C_RESET);
+        if (modified) printf("  %s~ %d modified%s\n", C_YELLOW, modified, C_RESET);
+    }
+}
+
+/* recursive comparer implementation */
+static void compare_dirs_internal(const char *snap_root, const char *work_root, const char *snap_rel, int *added, int *removed, int *modified) {
+    char snap_path[4096];
+    char work_path[4096];
+    snprintf(snap_path, sizeof(snap_path), "%s/%s", snap_root, snap_rel);
+    if (strlen(snap_rel) == 0) snprintf(snap_path, sizeof(snap_path), "%s", snap_root);
+
+    DIR *dir = opendir(snap_path);
+    if (!dir) return;
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+        char rel[4096];
+        if (strlen(snap_rel) == 0) snprintf(rel, sizeof(rel), "%s", entry->d_name);
+        else snprintf(rel, sizeof(rel), "%s/%s", snap_rel, entry->d_name);
+
+        // ignore check
+        struct stat st_snap;
+        snprintf(snap_path, sizeof(snap_path), "%s/%s", snap_root, rel);
+        if (stat(snap_path, &st_snap) != 0) continue;
+        int is_dir = S_ISDIR(st_snap.st_mode);
+        if (should_ignore(rel, is_dir)) continue;
+
+        snprintf(work_path, sizeof(work_path), "%s/%s", work_root, rel);
+        struct stat st_work;
+        if (stat(work_path, &st_work) != 0) {
+            // missing in workspace -> removed
+            printf("  %s- %s%s\n", C_RED, rel, C_RESET);
+            (*removed)++;
+            continue;
+        }
+        if (is_dir) {
+            compare_dirs_internal(snap_root, work_root, rel, added, removed, modified);
+        } else {
+            // compare content
+            if (files_differ(snap_path, work_path)) {
+                printf("  %s~ %s%s\n", C_YELLOW, rel, C_RESET);
+                (*modified)++;
+            }
+        }
+    }
+    closedir(dir);
+
+    // Now check workspace for added files under this rel
+    char work_dir_path[4096];
+    if (strlen(snap_rel) == 0) snprintf(work_dir_path, sizeof(work_dir_path), "%s", work_root);
+    else snprintf(work_dir_path, sizeof(work_dir_path), "%s/%s", work_root, snap_rel);
+
+    DIR *wdir = opendir(work_dir_path);
+    if (!wdir) return;
+    while ((entry = readdir(wdir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+        char rel2[4096];
+        if (strlen(snap_rel) == 0) snprintf(rel2, sizeof(rel2), "%s", entry->d_name);
+        else snprintf(rel2, sizeof(rel2), "%s/%s", snap_rel, entry->d_name);
+
+        struct stat stw;
+        char wfull[4096];
+        snprintf(wfull, sizeof(wfull), "%s/%s", work_root, rel2);
+        if (stat(wfull, &stw) != 0) continue;
+        int is_dir_w = S_ISDIR(stw.st_mode);
+        if (should_ignore(rel2, is_dir_w)) continue;
+
+        // check if exists in snapshot
+        char sfull[4096];
+        snprintf(sfull, sizeof(sfull), "%s/%s", snap_root, rel2);
+        if (stat(sfull, &stw) != 0) {
+            printf("  %s+ %s%s\n", C_GREEN, rel2, C_RESET);
+            (*added)++;
+        }
+    }
+    closedir(wdir);
+}
+
+/* wrapper to satisfy forward declaration */
+void compare_dirs(const char *snap_root, const char *work_root, const char *snap_rel, int *added, int *removed, int *modified) {
+    compare_dirs_internal(snap_root, work_root, snap_rel, added, removed, modified);
+}
+
 /* --- COMMAND: lit -list --- */
 static void cmd_list(void) {
     struct stat st;
@@ -310,7 +561,7 @@ static void cmd_list(void) {
     DIR *dir = opendir(".snapshot");
     if (!dir) return;
 
-    printf("%s[+] Saved Snapshots in .snapshot/:%s\n", C_CYAN, C_RESET);
+    printf("%s[+] Saved Snapshots in .snapshot/: %s\n", C_CYAN, C_RESET);
     int count = 0;
     struct dirent *entry;
 
@@ -333,13 +584,14 @@ static void cmd_list(void) {
 
 /* --- Help Menu --- */
 static void print_help(const char *prog_name) {
-    printf("%slit - Ultra-lightweight Local Versioning CLI Tool v1.2%s\n", C_BOLD, C_RESET);
+    printf("%slit - Ultra-lightweight Local Versioning CLI Tool v1.3%s\n", C_BOLD, C_RESET);
     printf("Usage: %s <command> [args]\n\n", prog_name);
     printf("Commands:\n");
     printf("  -init, init              Initialize .snapshot/ and save initial v0/v1 snapshot\n");
     printf("  -snap, snap <name>       Save a new snapshot of current folder into .snapshot/<name>\n");
     printf("  -load, load [name|vX]    Clean workspace & restore specified or latest snapshot\n");
     printf("  -list, list              List all snapshots stored in .snapshot/\n");
+    printf("  -diff, diff [name|vX]    Show differences between workspace and a snapshot (defaults to latest)\n");
     printf("  -help, help              Display this help menu\n\n");
 }
 
@@ -367,6 +619,10 @@ int main(int argc, char *argv[]) {
     else if (strcmp(cmd, "-load") == 0 || strcmp(cmd, "load") == 0) {
         const char *snap = (argc >= 3) ? argv[2] : NULL;
         cmd_load(snap);
+    }
+    else if (strcmp(cmd, "-diff") == 0 || strcmp(cmd, "diff") == 0) {
+        const char *snap = (argc >= 3) ? argv[2] : NULL;
+        cmd_diff(snap);
     }
     else if (strcmp(cmd, "-list") == 0 || strcmp(cmd, "list") == 0) {
         cmd_list();
